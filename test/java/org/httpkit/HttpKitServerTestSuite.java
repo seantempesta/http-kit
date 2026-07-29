@@ -20,6 +20,7 @@ import org.httpkit.server.*;
 @RunWith(Suite.class)
 @Suite.SuiteClasses({
   RingHandlerTest.class,
-  ThreadPoolTest.class
+  ThreadPoolTest.class,
+  WriteStateTest.class
 })
 public class HttpKitServerTestSuite { }

@@ -306,6 +306,10 @@ public class AsyncChannel {
         return closedRan.get();
     }
 
+    public WriteState writeState() {
+        return ((ServerAtta) key.attachment()).writeState();
+    }
+
     static Keyword K_BY_SERVER = Keyword.intern("server-close");
     static Keyword K_CLIENT_CLOSED = Keyword.intern("client-close");
 

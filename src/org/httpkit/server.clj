@@ -5,7 +5,7 @@
    [org.httpkit.utils :as utils])
 
   (:import
-   [org.httpkit.server AsyncChannel HttpServer RingHandler ProxyProtocolOption HttpServer$AddressFinder HttpServer$ServerChannelFactory Frame$PingFrame Frame$PongFrame]
+   [org.httpkit.server AsyncChannel HttpServer RingHandler ProxyProtocolOption HttpServer$AddressFinder HttpServer$ServerChannelFactory Frame$PingFrame Frame$PongFrame WriteState]
    [org.httpkit.logger ContextLogger EventLogger EventNames]
    [java.net InetSocketAddress]
    [java.nio ByteBuffer]
@@ -317,6 +317,13 @@
                               (fn callback* [data]
                                 (.send ch (Frame$PongFrame. data) false)
                                 (callback data)))))
+
+(defn write-state
+  "Returns the channel's pending-byte count and drain-or-close completion."
+  [^AsyncChannel ch]
+  (let [^WriteState state (.writeState ch)]
+    {:http-kit.write/pending-bytes (.getPendingBytes state)
+     :http-kit.write/drained (.getDrained state)}))
 
 (defmacro with-channel
   "DEPRECATED: this macro has potential race conditions, Ref. #318.
