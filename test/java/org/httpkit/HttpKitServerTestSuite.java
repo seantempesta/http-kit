@@ -26,6 +26,7 @@ import org.httpkit.timer.TimerServiceTest;
   AsyncChannelCloseTest.class,
   HttpServerProtocolTest.class,
   TimerServiceTest.class,
-  ThreadPoolTest.class
+  ThreadPoolTest.class,
+  WriteStateTest.class
 })
 public class HttpKitServerTestSuite { }

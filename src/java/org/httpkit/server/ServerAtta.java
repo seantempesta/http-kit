@@ -2,9 +2,14 @@ package org.httpkit.server;
 
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
+import java.util.concurrent.CompletableFuture;
 
 public abstract class ServerAtta {
     final LinkedList<ByteBuffer> toWrites = new LinkedList<ByteBuffer>();
+    private static final CompletableFuture<Void> DRAINED =
+            CompletableFuture.completedFuture(null);
+    private CompletableFuture<Void> writeDrained = DRAINED;
+    private boolean writeClosed = false;
 
     ByteBuffer pendingInput;
     boolean requestInProgress;
@@ -34,5 +39,30 @@ public abstract class ServerAtta {
 
     public void chunkedResponseInprogress(boolean b) {
         chunkedResponseInprogress = b;
+    }
+
+    synchronized void pendingWritesStarted() {
+        if (!writeClosed && writeDrained == DRAINED) {
+            writeDrained = new CompletableFuture<Void>();
+        }
+    }
+
+    synchronized CompletableFuture<Void> pendingWritesDrained() {
+        CompletableFuture<Void> drained = writeDrained;
+        writeDrained = DRAINED;
+        return drained == DRAINED ? null : drained;
+    }
+
+    synchronized CompletableFuture<Void> pendingWritesClosed() {
+        writeClosed = true;
+        return pendingWritesDrained();
+    }
+
+    public synchronized WriteState writeState() {
+        long pendingBytes = 0;
+        for (ByteBuffer buffer : toWrites) {
+            pendingBytes += buffer.remaining();
+        }
+        return new WriteState(pendingBytes, writeDrained);
     }
 }

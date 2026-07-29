@@ -23,6 +23,7 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -228,20 +229,28 @@ public class HttpServer implements Runnable {
 
         keptAlive.remove(key);
 
+        ServerAtta att = (ServerAtta) key.attachment();
+        CompletableFuture<Void> writeClosed = att == null ? null : att.pendingWritesClosed();
+
         try {
             key.channel().close();
         } catch (Exception ex) {
             Telemetry.log(warnLogger, "failed to close key", ex);
         }
 
-        ServerAtta att = (ServerAtta) key.attachment();
-        if (att instanceof HttpAtta) {
-            handler.clientClose(att.channel, -1);
-        } else if (att != null) {
-            WsAtta wsAtta = (WsAtta) att;
-            handler.clientClose(att.channel,
-                    wsAtta.closeStatus == 0 ? status : wsAtta.closeStatus,
-                    wsAtta.closeReason);
+        try {
+            if (att instanceof HttpAtta) {
+                handler.clientClose(att.channel, -1);
+            } else if (att != null) {
+                WsAtta wsAtta = (WsAtta) att;
+                handler.clientClose(att.channel,
+                        wsAtta.closeStatus == 0 ? status : wsAtta.closeStatus,
+                        wsAtta.closeReason);
+            }
+        } finally {
+            if (writeClosed != null) {
+                writeClosed.complete(null);
+            }
         }
     }
 
@@ -482,6 +491,8 @@ public class HttpServer implements Runnable {
     private void doWrite(SelectionKey key) {
         ServerAtta atta = (ServerAtta) key.attachment();
         SocketChannel ch = (SocketChannel) key.channel();
+        CompletableFuture<Void> writeDrained = null;
+        boolean close = false;
         try {
             // the sync is per socket (per client). virtually, no contention
             // 1. keep byte data order, 2. ensure visibility
@@ -505,6 +516,7 @@ public class HttpServer implements Runnable {
                 }
                 // all done
                 if (toWrites.size() == 0) {
+                    writeDrained = atta.pendingWritesDrained();
                     if (atta.isKeepAlive()) {
                         if (atta.requestInProgress) {
                             key.interestOps(canReadWhileInProgress(atta) ? OP_READ : 0);
@@ -513,9 +525,15 @@ public class HttpServer implements Runnable {
                             keptAlive.put(key, true);
                         }
                     } else {
-                        closeKey(key, CLOSE_NORMAL);
+                        close = true;
                     }
                 }
+            }
+            if (writeDrained != null) {
+                writeDrained.complete(null);
+            }
+            if (close) {
+                closeKey(key, CLOSE_NORMAL);
             }
         } catch (IOException e) { // the remote forcibly closed the connection
             closeKey(key, CLOSE_AWAY);
@@ -543,6 +561,7 @@ public class HttpServer implements Runnable {
                                 atta.toWrites.add(b);
                             }
                         }
+                        atta.pendingWritesStarted();
                         pending.add(new PendingKey(key, PendingKey.OP_WRITE));
                         selector.wakeup();
                     } else if (!atta.isKeepAlive()) {
